@@ -1,5 +1,9 @@
 CREATE TABLE users (
   id UUID PRIMARY KEY,
-  name TEXT NOT NULL,
-  password TEXT NOT NULL
+  username TEXT NOT NULL,
+  email TEXT NOT NULL,
+  password_hash TEXT NOT NULL
 );
+
+CREATE UNIQUE INDEX ON users(username);
+CREATE UNIQUE INDEX ON users(lower(email));
