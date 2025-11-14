@@ -2,12 +2,21 @@ import { Hono } from "@hono/hono";
 import { cors } from "@hono/hono/cors";
 import { logger } from "@hono/hono/logger";
 
-import * as taskControl from "./task-control.js"
+import * as middlewares from "./middlewares.js";
+
+import * as authControl from "./auth-control.js";
+import * as taskControl from "./task-control.js";
 
 const app = new Hono();
 
 app.use("/*", cors());
 app.use("/*", logger());        //For logging requests to this URL
+
+//Middlewares for keeping track of user information
+//Session cookies will be handled using Deno's key-value storage
+app.use("*", middlewares.addUserToContextMiddleware);
+//app.use(???, middlewares.accessControlMiddleware);    //Doesn't display if user is not logged in
+
 /*
 const sql = postgres();
 
@@ -28,5 +37,18 @@ app.post("/tasks", taskControl.createTask);
 app.get("/tasks/:id", taskControl.showTask);
 app.post("/tasks/:id", taskControl.updateTask);
 app.post("/tasks/:id/delete", taskControl.deleteTask);
+app.post("/tasks/:id/complete", taskControl.markTaskAsComplete);
+app.post("/tasks/:id/incomplete", taskControl.markTaskAsIncomplete);
+
+/*
+app.post("/users", userManager.registerUser)
+app.post("/login", userManager.authenticateUser)
+*/
+
+//app.get("/auth/registration", );         //Show form for registration
+app.post("/auth/registration", authControl.registerUser);        //Form should post here to register user
+//app.get("/auth/login", ???);                //Show form for logging in
+app.post("/auth/login", authControl.loginUser);               //Form should post here to log user in
+app.post("/auth/logout", authControl.logoutUser);              //Form should post here to log user out
 
 export default app;

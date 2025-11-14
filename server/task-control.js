@@ -7,16 +7,21 @@ import * as taskService from "./task-service.js";
 const createTask = async (c) => {
   const body = await c.req.json();
   
-  const result = await taskService.createTask(body);
+  //const result = await taskService.createTask(c.user.id, body);
+  const result = await taskService.createTask("47d28a29-2735-4712-8b0f-c1907646246c", body);
+  console.log(result)
+
   return c.json(result, 201);
 }
 
 const showTask = async (c) => {
   const id = c.req.param('id');
 
-  const result = taskService.readTask(id)
-
-  return c.json(result);
+  const result = await taskService.readTask(id)
+  if(!result) {
+    return c.json({ message: "task not found" }, 404);
+  }
+  return c.json(result, 200);
 }
 
 const updateTask = async (c) => {
@@ -29,7 +34,7 @@ const updateTask = async (c) => {
 
 const deleteTask = async (c) => {
   const id = c.req.param('id');
-
+  
   await taskService.deleteTask(id);
   return c.json({ message: "task deleted" }, 200);
 }
@@ -40,4 +45,18 @@ const listAllTasks = async (c) => {
   return c.json(result, 200);
 }
 
-export { createTask, showTask, updateTask, deleteTask, listAllTasks }
+const markTaskAsComplete = async(c) => {
+  const id = c.req.param('id');
+
+  await taskService.markTaskAsComplete(id);
+  return c.json({ message: "task completed" }, 200);
+}
+
+const markTaskAsIncomplete = async(c) => {
+  const id = c.req.param('id');
+
+  await taskService.markTaskAsIncomplete(id);
+  return c.json({ message: "task not complete" }, 200);
+}
+
+export { createTask, showTask, updateTask, deleteTask, listAllTasks, markTaskAsComplete, markTaskAsIncomplete }
