@@ -150,16 +150,23 @@
     
     submitting = true;
     try {
+      const sanitizedPrice = (price ?? '').toString().trim();
+      const sanitizedLocation = (location ?? '').toString().trim();
+      const payload = {
+        name: postTitle.trim(),
+        description: description.trim(),
+        price: sanitizedPrice !== '' ? sanitizedPrice : '0',
+        location: sanitizedLocation !== '' ? sanitizedLocation : 'Espoo, Finland',
+        type: postType || 'need',
+        userId: currentUser?.id || currentUser?.email || currentUser?.name || 'anonymous'
+      };
+      
       const response = await fetch('https://loud-starling-77.deno.dev/tasks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name: postTitle,
-          description: description,
-          price: price || '0'
-        })
+        body: JSON.stringify(payload)
       });
       
       if (response.ok) {
