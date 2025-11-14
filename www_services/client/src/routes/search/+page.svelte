@@ -27,6 +27,9 @@
   let markers = [];
   let markersInitialized = false;
   let lastTasksHash = '';
+  let selectedTaskId = null; // Track selected/hovered task from map marker
+  let taskCoordinates = new Map(); // Store stable coordinates for each task
+  let filterByMapBounds = false; // Whether to filter tasks by current map bounds
   
   $: {
     searchQuery = $page.url.searchParams.get('q') || '';
@@ -69,11 +72,11 @@
   function initMap() {
     if (!mapContainer || map || !L) return;
     
-    // Initialize Leaflet map centered on Aalto University, Helsinki
+    // Initialize Leaflet map centered on Aalto University ABLOCK
     map = L.map(mapContainer, {
       zoomControl: false,
       attributionControl: true
-    }).setView([60.1882, 24.8307], 13);
+    }).setView([60.1848, 24.8274], 15);
     
     // Add CartoDB Positron tile layer (modern, minimal style)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -83,47 +86,215 @@
     }).addTo(map);
     
     // Add custom zoom controls
-    L.control.zoom({
+    const zoomControl = L.control.zoom({
       position: 'topright'
     }).addTo(map);
+    
+    // Force map to recalculate size after a short delay to ensure layout is stable
+    setTimeout(() => {
+      if (map) {
+        map.invalidateSize();
+        // Ensure zoom controls are visible and positioned correctly
+        ensureZoomControlsVisible();
+      }
+    }, 100);
     
     // Add markers for tasks
     if (tasks.length > 0) {
       addMarkersToMap();
     }
+    
+    // Listen for map move/zoom events to update filters if "Search this area" is active
+    map.on('moveend zoomend', () => {
+      if (filterByMapBounds) {
+        // Automatically refresh task list when map bounds change and filter is active
+        loadTasks();
+      }
+      // Ensure zoom controls stay visible after map events
+      ensureZoomControlsVisible();
+      // Ensure map header button stays in correct position
+      ensureMapHeaderPosition();
+    });
+    
+    // Ensure zoom controls are always visible after zoom
+    map.on('zoomend', () => {
+      ensureZoomControlsVisible();
+      ensureMapHeaderPosition();
+    });
+    
+    // Also listen for zoomstart to fix position immediately
+    map.on('zoomstart', () => {
+      ensureMapHeaderPosition();
+    });
+    
+    // Function to ensure zoom controls are always visible and correctly positioned
+    function ensureZoomControlsVisible() {
+      const zoomControls = document.querySelector('.leaflet-control-zoom');
+      if (zoomControls) {
+        zoomControls.style.display = 'block';
+        zoomControls.style.visibility = 'visible';
+        zoomControls.style.opacity = '1';
+        zoomControls.style.position = 'absolute';
+        zoomControls.style.top = '16px';
+        zoomControls.style.right = '16px';
+        zoomControls.style.zIndex = '1000';
+        zoomControls.style.margin = '0';
+      }
+    }
+    
+    // Function to ensure map header button stays in correct position
+    function ensureMapHeaderPosition() {
+      const mapHeader = document.querySelector('.map-header');
+      const mapPanel = document.querySelector('.map-panel');
+      if (mapHeader && mapPanel) {
+        // Force the header to stay at the top center of map-panel (NOT map-container)
+        // This ensures it doesn't move when the map zooms
+        mapHeader.style.position = 'absolute';
+        mapHeader.style.top = '16px'; // Fixed 16px from top of map-panel
+        mapHeader.style.left = '50%';
+        mapHeader.style.transform = 'translateX(-50%)';
+        mapHeader.style.zIndex = '999';
+        mapHeader.style.margin = '0';
+        mapHeader.style.padding = '0';
+      }
+    }
+    
+    // Use MutationObserver to watch for changes to zoom controls and map header
+    if (typeof MutationObserver !== 'undefined') {
+      const observer = new MutationObserver(() => {
+        ensureZoomControlsVisible();
+        ensureMapHeaderPosition();
+      });
+      
+      const mapElement = mapContainer;
+      if (mapElement) {
+        observer.observe(mapElement, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['style', 'class']
+        });
+        // Also observe the parent container for header changes
+        const parentContainer = mapElement.parentElement;
+        if (parentContainer) {
+          observer.observe(parentContainer, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['style', 'class']
+          });
+        }
+      }
+    }
+    
+    // Periodically check and fix zoom controls and header position (safety net)
+    const zoomControlCheckInterval = setInterval(() => {
+      if (map && mapContainer) {
+        ensureZoomControlsVisible();
+        ensureMapHeaderPosition();
+      } else {
+        clearInterval(zoomControlCheckInterval);
+      }
+    }, 500); // Check every 500ms
+    
+    // Initial positioning
+    setTimeout(() => {
+      ensureMapHeaderPosition();
+    }, 200);
   }
   
   function addMarkersToMap() {
     if (!map || !L) return;
     
+    // STRICT CHECK: Don't recreate markers if they're already initialized
+    // This prevents markers from moving when hovering over cards
+    if (markersInitialized && markers.length > 0) {
+      console.log('⚠️ Markers already initialized, skipping recreation. This should not happen during hover!');
+      console.trace('Stack trace to see what triggered this');
+      return;
+    }
+    
+    console.log('✅ Creating markers... (This should only happen when tasks change)');
+    
     // Clear existing markers
-    markers.forEach(marker => map.removeLayer(marker));
+    markers.forEach(marker => {
+      if (marker && map.hasLayer(marker)) {
+        map.removeLayer(marker);
+      }
+    });
     markers = [];
     
     // Add marker for each task (showing rank number)
+    // ABLOCK coordinates: 60.1848, 24.8274
+    const ABLOCK_LAT = 60.1848;
+    const ABLOCK_LNG = 24.8274;
+    
+    console.log(`Adding markers for ${tasks.length} tasks (showing first 10)`);
+    
     tasks.slice(0, 10).forEach((task, index) => {
       const rank = index + 1; // Rank is 1-indexed
+      const taskId = task?.id || `task_${index}`;
       
-      // Generate stable position based on task ID using a simple hash
-      function hashString(str) {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-          const char = str.charCodeAt(i);
-          hash = ((hash << 5) - hash) + char;
-          hash = hash & hash;
-        }
-        return hash;
+      if (!task || !task.id) {
+        console.warn(`Task at index ${index} is missing ID, using fallback: ${taskId}`);
       }
       
-      const hash = Math.abs(hashString(task.id || index.toString()));
-      const lat = 60.1882 + ((hash % 100 - 50) / 1000) * 0.5;
-      const lng = 24.8307 + (((hash >> 10) % 100 - 50) / 1000) * 0.5;
+      // Use cached coordinates if available, otherwise calculate and cache
+      let lat, lng;
+      if (taskCoordinates.has(taskId)) {
+        const coords = taskCoordinates.get(taskId);
+        lat = coords.lat;
+        lng = coords.lng;
+      } else {
+        // Generate stable position based on task ID using a simple hash
+        function hashString(str) {
+          if (!str || typeof str !== 'string') return 0;
+          let hash = 0;
+          for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+          }
+          return hash;
+        }
+        
+        // Use a combination of hash and index to ensure unique positions
+        // This prevents all markers from overlapping if task IDs are missing or identical
+        const hash = Math.abs(hashString(taskId));
+        const combinedHash = hash + (index * 7919); // Prime number for better distribution
+        
+        // Generate position around ABLOCK with visible offsets
+        // Offset range: -0.005 to +0.005 degrees (about 500 meters)
+        // This ensures markers are spread out around ABLOCK but still visible on the map
+        const latOffset = ((combinedHash % 1000 - 500) / 100000); // ±0.005 degrees
+        const lngOffset = (((combinedHash >> 10) % 1000 - 500) / 100000); // ±0.005 degrees
+        
+        // Ensure coordinates are valid numbers
+        lat = ABLOCK_LAT + latOffset;
+        lng = ABLOCK_LNG + lngOffset;
+        
+        // Validate coordinates before creating marker
+        if (isNaN(lat) || isNaN(lng) || !isFinite(lat) || !isFinite(lng) || 
+            lat < 60 || lat > 61 || lng < 24 || lng > 25) {
+          console.warn(`Invalid coordinates for task ${taskId}, using ABLOCK with index offset`);
+          // Use ABLOCK with index-based offset as fallback (spread in a grid)
+          const row = Math.floor(index / 3);
+          const col = index % 3;
+          lat = ABLOCK_LAT + (row * 0.0005) - 0.0005; // 3 rows
+          lng = ABLOCK_LNG + (col * 0.0005) - 0.0005; // 3 columns
+        }
+        
+        // Cache the coordinates
+        taskCoordinates.set(taskId, { lat, lng });
+      }
       
       // Create custom icon with rank number for each marker (black modern style)
+      // The SVG viewBox is 155x200, icon size is 32x42
+      // The teardrop tip should point to the exact coordinate
       const pinIcon = L.divIcon({
         html: `
-          <div style="position: relative;">
-            <svg width="32" height="42" viewBox="0 0 155 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <div style="position: relative; width: 32px; height: 42px;">
+            <svg width="32" height="42" viewBox="0 0 155 200" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
               <path d="M77.1375 0C34.6 0 -0.00416623 34.6 3.76228e-07 77.1333C3.76228e-07 92.9333 4.74583 108.125 13.6292 120.913C14.075 121.679 14.525 122.421 15.0542 123.142L71.3583 197.358C72.8875 199.063 74.9417 200 77.1417 200C79.3125 200 81.3792 199.054 83.1667 197.05L139.212 123.129C139.767 122.396 140.238 121.592 140.496 121.121C149.508 108.154 154.279 92.9458 154.279 77.1417C154.279 34.6 119.675 0 77.1375 0Z" fill="#000000"/>
             </svg>
             <span style="position: absolute; top: 28%; left: 50%; transform: translateX(-50%); font-weight: 700; font-size: 0.85rem; color: #FFFFFF; text-shadow: 0 1px 2px rgba(0,0,0,0.5); line-height: 1;">${rank}</span>
@@ -131,35 +302,92 @@
         `,
         className: 'custom-pin',
         iconSize: [32, 42],
-        iconAnchor: [16, 42],
+        iconAnchor: [16, 42], // Center horizontally (32/2), bottom vertically (42)
         popupAnchor: [0, -42]
       });
       
-      const marker = L.marker([lat, lng], { icon: pinIcon })
-        .addTo(map)
-        .bindPopup(`<strong>#${rank} ${task.name}</strong>`);
+      // Create marker with explicit coordinates to ensure stability
+      const marker = L.marker([lat, lng], { 
+        icon: pinIcon,
+        draggable: false,
+        keyboard: false
+      }).addTo(map);
       
-      // Store task reference in marker for hover matching
+      // Explicitly set position to ensure it doesn't change
+      marker.setLatLng([lat, lng]);
+      
+      // LOCK the marker position - prevent any code from changing it
+      const originalLatLng = [lat, lng];
+      marker.setLatLng = function(newLatLng) {
+        // Ignore any attempts to change position - keep original position
+        if (L && this._map) {
+          L.Marker.prototype.setLatLng.call(this, originalLatLng);
+        }
+        return this;
+      };
+      
+      // Debug: log marker creation
+      console.log(`Created marker #${rank} for task ${taskId} at (${lat.toFixed(6)}, ${lng.toFixed(6)}) - Position LOCKED`);
+      
+      // Store task reference and coordinates in marker for hover matching
       marker._taskId = task.id;
+      marker._lat = lat;
+      marker._lng = lng;
+      marker._locked = true; // Mark as locked
+      
+      // Add click event to marker - scroll to card when clicked
+      marker.on('click', (e) => {
+        console.log(`📍 Marker clicked for task ${task.id}`);
+        e.originalEvent?.stopPropagation(); // Prevent map click
+        selectedTaskId = task.id;
+        // Scroll to corresponding card (only scrolls the card list, not the page)
+        scrollToCard(task.id);
+      });
+      
+      // Add hover events for visual feedback (highlight marker)
+      marker.on('mouseover', () => {
+        selectedTaskId = task.id;
+        // Just highlight, don't scroll on hover
+      });
+      
+      marker.on('mouseout', () => {
+        // Don't clear immediately, let card hover take over if mouse moves there
+        setTimeout(() => {
+          if (selectedTaskId === task.id) {
+            selectedTaskId = null;
+          }
+        }, 100);
+      });
+      
       markers.push(marker);
     });
+    
+    console.log(`Successfully created ${markers.length} markers on the map`);
+    console.log('Marker coordinates:', markers.map(m => ({
+      taskId: m._taskId,
+      lat: m._lat?.toFixed(6),
+      lng: m._lng?.toFixed(6)
+    })));
     
     markersInitialized = true;
   }
   
   // Watch for hoveredTask changes and highlight corresponding marker
-  $: if (hoveredTask && map && markers.length > 0) {
+  // IMPORTANT: This ONLY changes marker styling (opacity, scale, z-index), NEVER position
+  $: if (hoveredTask && map && markers.length > 0 && markersInitialized) {
     markers.forEach((marker) => {
+      // DO NOT touch marker position here - only change visual styling
       if (marker._taskId === hoveredTask.id) {
+        // Highlight the hovered marker
         marker.setOpacity(1);
         marker.setZIndexOffset(1000);
-        // Scale up the marker to make it more prominent
         const iconElement = marker._icon;
         if (iconElement) {
           iconElement.style.transform = 'scale(1.3)';
           iconElement.style.transition = 'transform 0.2s ease';
         }
       } else {
+        // Dim other markers
         marker.setOpacity(0.4);
         marker.setZIndexOffset(0);
         const iconElement = marker._icon;
@@ -171,8 +399,10 @@
   }
   
   // Reset marker opacity when no task is hovered
-  $: if (!hoveredTask && map && markers.length > 0) {
+  // IMPORTANT: This ONLY changes marker styling, NEVER position
+  $: if (!hoveredTask && map && markers.length > 0 && markersInitialized) {
     markers.forEach(marker => {
+      // DO NOT touch marker position here - only reset visual styling
       marker.setOpacity(1);
       marker.setZIndexOffset(0);
       const iconElement = marker._icon;
@@ -182,15 +412,33 @@
     });
   }
   
-  // Watch for tasks changes and reload markers
+  // Watch for tasks changes and reload markers (only when tasks actually change)
+  // This reactive statement only depends on tasks, map, L, and loading - NOT on hoveredTask or selectedTaskId
+  // CRITICAL: This should NEVER run during hover - only when tasks array reference or content actually changes
   $: if (map && L && tasks.length > 0 && !loading) {
-    // Create a hash of task IDs to detect changes
-    const currentHash = tasks.map(t => t.id).join(',');
-    if (currentHash !== lastTasksHash) {
+    // Create a stable hash of task IDs to detect changes
+    const currentHash = tasks
+      .slice(0, 10)
+      .map(t => t?.id || '')
+      .filter(id => id !== '')
+      .join(',');
+    
+    // STRICT: Only reload markers if the task list hash actually changed AND markers aren't already initialized
+    if (currentHash !== lastTasksHash && currentHash !== '' && (!markersInitialized || markers.length === 0)) {
+      console.log('📋 Tasks changed, recreating markers. Old hash:', lastTasksHash, 'New hash:', currentHash);
       lastTasksHash = currentHash;
-      markersInitialized = false;
+      markersInitialized = false; // Allow recreation
+      addMarkersToMap();
+    } else if (currentHash !== lastTasksHash && currentHash !== '') {
+      // Hash changed but markers are already initialized - just update the hash, don't recreate
+      console.log('📋 Task hash changed but markers already exist, updating hash only');
+      lastTasksHash = currentHash;
+    } else if (currentHash === lastTasksHash && !markersInitialized && markers.length === 0) {
+      // Tasks haven't changed but markers need initialization
+      console.log('🔧 Initializing markers for the first time');
       addMarkersToMap();
     }
+    // If markers are already initialized and hash hasn't changed, do nothing
   }
   
   function handleLogout() {
@@ -290,6 +538,25 @@
         }
       }
       
+      // Filter by map bounds (if enabled)
+      if (filterByMapBounds && map && L) {
+        const bounds = map.getBounds();
+        filteredTasks = filteredTasks.filter(task => {
+          const taskId = task?.id || '';
+          // Check if task has cached coordinates
+          if (taskCoordinates.has(taskId)) {
+            const coords = taskCoordinates.get(taskId);
+            const lat = coords.lat;
+            const lng = coords.lng;
+            // Check if task coordinates are within map bounds
+            return bounds.contains([lat, lng]);
+          }
+          // If no cached coordinates, include the task (shouldn't happen if markers are created)
+          return false;
+        });
+        console.log(`Filtered to ${filteredTasks.length} tasks within map bounds`);
+      }
+      
       // Calculate relevance and sort
       if (searchQuery) {
         filteredTasks = filteredTasks.map(task => ({
@@ -319,6 +586,93 @@
     }
   }
   
+  function handleSearchThisArea() {
+    if (!map || !L) {
+      console.warn('Map not initialized');
+      return;
+    }
+    
+    // Toggle filter by map bounds
+    filterByMapBounds = !filterByMapBounds;
+    
+    if (filterByMapBounds) {
+      // Get current map bounds
+      const bounds = map.getBounds();
+      console.log('Searching in area:', {
+        north: bounds.getNorth(),
+        south: bounds.getSouth(),
+        east: bounds.getEast(),
+        west: bounds.getWest()
+      });
+      
+      // Reload tasks with map bounds filter
+      loadTasks();
+    } else {
+      // Clear map bounds filter
+      loadTasks();
+    }
+  }
+  
+  function scrollToCard(taskId) {
+    // Find card element by data-task-id attribute
+    const cardElement = document.querySelector(`[data-task-id="${taskId}"]`);
+    if (!cardElement) {
+      console.warn(`Card with task ID ${taskId} not found`);
+      return;
+    }
+    
+    // Find the scrollable container (results-panel)
+    const resultsPanel = document.querySelector('.results-panel');
+    if (!resultsPanel) {
+      console.warn('Results panel container not found, using fallback scroll');
+      cardElement.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'center',
+        inline: 'nearest'
+      });
+      return;
+    }
+    
+    // Get positions using getBoundingClientRect for accurate measurements
+    const cardRect = cardElement.getBoundingClientRect();
+    const containerRect = resultsPanel.getBoundingClientRect();
+    const containerScrollTop = resultsPanel.scrollTop;
+    const containerHeight = resultsPanel.clientHeight;
+    
+    // Calculate card's position relative to the scrollable container
+    // cardRect.top is relative to viewport, containerRect.top is relative to viewport
+    // So the difference gives us the card's position relative to the container's visible area
+    const cardTopInViewport = cardRect.top;
+    const containerTopInViewport = containerRect.top;
+    
+    // Card's top position relative to container's visible top edge
+    const cardOffsetFromContainerTop = cardTopInViewport - containerTopInViewport;
+    
+    // Card's absolute position in the scrollable content
+    const cardAbsoluteTop = containerScrollTop + cardOffsetFromContainerTop;
+    
+    // Calculate scroll position to center the card
+    const cardHeight = cardRect.height;
+    const scrollTo = cardAbsoluteTop - (containerHeight / 2) + (cardHeight / 2);
+    
+    console.log(`Scrolling to card ${taskId}:`, {
+      cardTopInViewport,
+      containerTopInViewport,
+      cardOffsetFromContainerTop,
+      containerScrollTop,
+      cardAbsoluteTop,
+      containerHeight,
+      cardHeight,
+      scrollTo: Math.max(0, scrollTo)
+    });
+    
+    // Smooth scroll within the container only
+    resultsPanel.scrollTo({
+      top: Math.max(0, scrollTo), // Ensure scrollTop is not negative
+      behavior: 'smooth'
+    });
+  }
+  
   function handleCardHover(task, event) {
     // 检查是否点击了收藏按钮
     if (event.target.closest('.favorite-btn')) {
@@ -330,6 +684,7 @@
     }
     // 立即设置悬停任务
     hoveredTask = task;
+    selectedTaskId = task.id;
   }
   
   function handleCardLeave(event) {
@@ -341,8 +696,14 @@
     if (hoverTimeout) {
       clearTimeout(hoverTimeout);
     }
-    // 清除悬停任务
+    // 清除悬停任务（但保留 selectedTaskId 如果是从地图标记触发的）
     hoveredTask = null;
+    // Only clear selectedTaskId if not hovering over a marker
+    setTimeout(() => {
+      if (!hoveredTask) {
+        selectedTaskId = null;
+      }
+    }, 100);
   }
   
   function formatTimeAgo(dateString) {
@@ -554,7 +915,8 @@
               {@const timeInfo = formatTimeAgo(task.time)}
               {@const rank = index + 1}
               <div 
-                class="result-card" 
+                class="result-card {selectedTaskId === task.id ? 'selected' : ''}"
+                data-task-id={task.id}
                 on:click={() => goto(`/task/${task.id}`)}
                 on:keydown={(e) => { if (e.key === 'Enter') goto(`/task/${task.id}`); }}
                 on:mouseenter={(e) => handleCardHover(task, e)}
@@ -605,10 +967,16 @@
       
       <!-- Right: Map -->
       <aside class="map-panel">
+        <div class="map-header">
+          <button 
+            class="search-area-btn {filterByMapBounds ? 'active' : ''}"
+            on:click={handleSearchThisArea}
+            title={filterByMapBounds ? 'Clear area filter' : 'Filter tasks by current map view'}
+          >
+            {filterByMapBounds ? 'Clear area filter' : 'Search this area'}
+          </button>
+        </div>
         <div class="map-container">
-          <div class="map-header">
-            <button class="search-area-btn">Search this area</button>
-          </div>
           <div bind:this={mapContainer} class="leaflet-container"></div>
         </div>
       </aside>
@@ -985,6 +1353,14 @@
     z-index: 2;
   }
   
+  .result-card.selected {
+    border-color: #ECF86E;
+    box-shadow: 0 6px 20px rgba(236, 248, 110, 0.4);
+    background: #FAFFE8;
+    z-index: 3;
+    transform: scale(1.02);
+  }
+  
   .rank-badge {
     position: absolute;
     top: 1rem;
@@ -1127,27 +1503,85 @@
     border-left: 1px solid #EAF2FD;
     display: flex;
     flex-direction: column;
+    height: 100%; /* Ensure fixed height */
+    min-height: 0; /* Prevent flex item from expanding */
+    overflow: hidden; /* Prevent overflow */
+    position: relative; /* Positioning context for map-header */
   }
   
   .map-container {
     width: 100%;
     height: 100%;
     position: relative;
+    overflow: hidden; /* Prevent overflow issues */
+    min-height: 0; /* Prevent flex item from expanding */
+    flex: 1; /* Take up remaining space */
   }
   
   .leaflet-container {
-    width: 100%;
-    height: 100%;
+    width: 100% !important;
+    height: 100% !important;
     z-index: 1;
+    position: relative; /* Ensure proper stacking context */
+  }
+  
+  /* Ensure Leaflet zoom controls stay visible and fixed - HIGHEST PRIORITY */
+  .leaflet-control-zoom {
+    z-index: 1000 !important;
+    position: absolute !important;
+    top: 16px !important; /* Fixed pixel value instead of rem */
+    right: 16px !important; /* Fixed pixel value instead of rem */
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4) !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: none !important;
+    width: auto !important;
+    height: auto !important;
+  }
+  
+  .leaflet-control-zoom a {
+    display: block !important;
+    width: 34px !important;
+    height: 34px !important;
+    line-height: 34px !important;
+    text-align: center !important;
+    text-decoration: none !important;
+    color: #333 !important;
+    background: #fff !important;
+    border-bottom: 1px solid #ccc !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+  
+  .leaflet-control-zoom a:hover {
+    background: #f4f4f4 !important;
+  }
+  
+  .leaflet-control-zoom-in,
+  .leaflet-control-zoom-out {
+    font: bold 18px/34px Arial, sans-serif !important;
   }
   
   .map-header {
-    position: absolute;
-    top: 1rem;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1000;
-    pointer-events: none;
+    position: absolute !important;
+    top: 16px !important; /* Fixed pixel value - relative to map-panel */
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 999 !important; /* Below zoom controls but above map */
+    pointer-events: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    /* Positioned relative to map-panel, NOT map-container - this prevents movement during zoom */
   }
   
   .search-area-btn {
@@ -1158,8 +1592,25 @@
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
-    pointer-events: auto;
+    pointer-events: auto; /* Allow clicking despite parent's pointer-events: none */
     white-space: nowrap;
+    transition: all 0.2s ease;
+    position: relative; /* Ensure button is positioned correctly */
+  }
+  
+  .search-area-btn:hover {
+    background: #333;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  }
+  
+  .search-area-btn.active {
+    background: #ECF86E;
+    color: #000;
+  }
+  
+  .search-area-btn.active:hover {
+    background: #d4e55a;
   }
   
   

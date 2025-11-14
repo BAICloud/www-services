@@ -1,5 +1,5 @@
 {
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "jsr:@denorg/scrypt@4.4.4": "4.4.4",
     "jsr:@hono/hono@4.6.5": "4.6.5",
@@ -344,6 +344,12 @@
     "dependencies": [
       "jsr:@denorg/scrypt@4.4.4",
       "jsr:@hono/hono@4.6.5"
-    ]
+    ],
+    "packageJson": {
+      "dependencies": [
+        "npm:cors@^2.8.5",
+        "npm:express@^4.18.2"
+      ]
+    }
   }
 }

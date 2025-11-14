@@ -17,6 +17,40 @@ This document is a clear, actionable TODO list for backend developers. Based on 
 
 ---
 
+## 📦 What the Frontend Actually Sends Today
+
+When a user submits the form on `www_services/client/src/routes/post/+page.svelte`, the frontend now sends the following payload:
+
+```javascript
+await fetch('https://loud-starling-77.deno.dev/tasks', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    name: postTitle.trim(),
+    description: description.trim(),
+    price: sanitizedPrice !== '' ? sanitizedPrice : '0',
+    location: sanitizedLocation || 'Espoo, Finland',
+    type: postType || 'need',
+    userId: currentUser?.id || currentUser?.email || currentUser?.name || 'anonymous'
+  })
+});
+```
+
+So the backend receives up to **six fields**:
+
+| Field | Source in UI | Notes |
+| --- | --- | --- |
+| `name` | “Post title” | Required |
+| `description` | “Description” | Required |
+| `price` | “Price (€)” | Defaults to string `"0"` if the user leaves it blank |
+| `location` | Location input / auto-detected | Falls back to `"Espoo, Finland"` |
+| `type` | Need/Offer toggle | Defaults to `"need"` |
+| `userId` | Derived from logged-in user data | Falls back to `"anonymous"` if user not logged in |
+
+> The frontend is now fully sending the extra fields the UI collects. If backend responses still miss them, it means the backend has not stored/returned these values yet.
+
+---
+
 ## 🔴 HIGH PRIORITY - Must Fix Immediately
 
 ### 1. Add `price` Field
@@ -286,14 +320,17 @@ return c.json(task, 200);    // ← Object format
 fetch('/tasks', {
   method: 'POST',
   body: JSON.stringify({
-    name: postTitle,
-    description: description,
-    price: price || '0'  // ← Only these 3 fields sent
+    name: postTitle.trim(),
+    description: description.trim(),
+    price: price || '0',
+    location: location || 'Espoo, Finland',
+    type: postType || 'need',
+    userId: currentUser?.id || currentUser?.email || 'anonymous'
   })
 })
 ```
 
-**Frontend pending changes:** Need to send `location`, `type`, `userId`
+**Frontend status:** `location`, `type`, and `userId` are already included in the request payload. Backend only needs to persist and return them.
 
 ---
 
