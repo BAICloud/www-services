@@ -10,7 +10,7 @@ const createSession = async  (c, user) => {
   });
 
   const kv = await Deno.openKv();
-  await kv.set(["sessions", sessionId], user, {
+  await kv.set(["sessions", sessionID], user, {
     expireIn: WEEK_IN_MILLISECONDS,
   });
 }

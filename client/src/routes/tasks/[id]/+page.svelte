@@ -76,7 +76,7 @@
     loading = true;
     error = null;
     try {
-      const response = await fetch(`https://loud-starling-77.deno.dev/tasks/${taskId}`);
+      const response = await fetch(`http://localhost:8000/tasks/${taskId}`);
       if (!response.ok) {
         throw new Error('Task not found');
       }
@@ -128,7 +128,7 @@
     
     try {
       // Load all tasks
-      const response = await fetch('https://loud-starling-77.deno.dev/tasks');
+      const response = await fetch('http://localhost:8000/tasks');
       const allTasks = await response.json();
       
       // Filter out current task

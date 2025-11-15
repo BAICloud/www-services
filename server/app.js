@@ -15,7 +15,7 @@ app.use("/*", logger());        //For logging requests to this URL
 //Middlewares for keeping track of user information
 //Session cookies will be handled using Deno's key-value storage
 app.use("*", middlewares.addUserToContextMiddleware);
-//app.use(???, middlewares.accessControlMiddleware);    //Doesn't display if user is not logged in
+//app.use(???, middlewares.accessControlMiddleware);    //Doesn't display if user is not logged in (possibly personal account?)
 
 /*
 const sql = postgres();
@@ -45,10 +45,13 @@ app.post("/users", userManager.registerUser)
 app.post("/login", userManager.authenticateUser)
 */
 
-//app.get("/auth/registration", );         //Show form for registration
-app.post("/auth/registration", authControl.registerUser);        //Form should post here to register user
-//app.get("/auth/login", ???);                //Show form for logging in
-app.post("/auth/login", authControl.loginUser);               //Form should post here to log user in
-app.post("/auth/logout", authControl.logoutUser);              //Form should post here to log user out
+//app.get("/auth/registration", );                              //Show form for registration
+app.post("/auth/registration", authControl.registerUser);       //Form should post here to register user
+//app.get("/auth/login", ???);                                  //Show form for logging in
+app.post("/auth/login", authControl.loginUser);                 //Form should post here to log user in
+app.post("/auth/logout", authControl.logoutUser);               //Form should post here to log user out
+app.get("/auth/session", async (c) => {
+  return c.json({ user: c.user });                              //Return current user (for clientside)
+});
 
 export default app;

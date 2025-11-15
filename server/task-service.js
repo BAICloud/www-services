@@ -10,14 +10,15 @@ const sql = postgres();
 const createTask = async (userID, task) => {
   const id = crypto.randomUUID();
   
-  const { name, description, location, price } = task;
+  const { name, description, location, category, type, price } = task;
   
   const result = await sql`
-    INSERT INTO tasks (id, name, description, user_id, location, price)
-    VALUES (${id}, ${name}, ${description}, ${userID}, ${location}, ${price})
+    INSERT INTO tasks (id, name, description, user_id, location, category, type, price)
+    VALUES (${id}, ${name}, ${description}, ${userID}, ${location}, ${category}, ${type}, ${price})
     RETURNING *;
   `;
 
+  console.log(result[0]);
   return result[0];
 }
 

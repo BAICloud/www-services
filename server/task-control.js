@@ -7,10 +7,12 @@ import * as taskService from "./task-service.js";
 const createTask = async (c) => {
   const body = await c.req.json();
   
-  //const result = await taskService.createTask(c.user.id, body);
-  const result = await taskService.createTask("47d28a29-2735-4712-8b0f-c1907646246c", body);
-  console.log(result)
-
+  if(c.user.id) {
+    const result = await taskService.createTask("00000000-0000-0000-0000-000000000000", body);  //For anonymous users
+  } else {
+    const result = await taskService.createTask(c.user.id, body);
+  }
+  
   return c.json(result, 201);
 }
 
