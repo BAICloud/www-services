@@ -1,6 +1,7 @@
 <script>
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { apiUrl, API_CONFIG } from '$lib/api-config.js';
   
   let postType = 'need';
   let uploadedImages = [];
@@ -19,12 +20,34 @@
   let showLanguageMenu = false;
   let currentLanguage = 'en';
   
-  onMount(() => {
+  async function fetchCurrentUser() {
+    try {
+      const response = await fetch(apiUrl(API_CONFIG.endpoints.auth.session), {
+        credentials: 'include' // Include cookies for session
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.user) {
+          currentUser = data.user;
+          isLoggedIn = true;
+          // Also save to localStorage for fallback
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      // Fallback to localStorage if server request fails
     const userData = localStorage.getItem('user');
     if (userData) {
       currentUser = JSON.parse(userData);
       isLoggedIn = true;
+      }
     }
+    }
+  
+  onMount(async () => {
+    // Try to get user from server first (c.user from middleware)
+    await fetchCurrentUser();
     
     const savedLanguage = localStorage.getItem('language');
     if (savedLanguage) {
@@ -161,11 +184,12 @@
         userId: currentUser?.id || currentUser?.email || currentUser?.name || 'anonymous'
       };
       
-      const response = await fetch('https://loud-starling-77.deno.dev/tasks', {
+      const response = await fetch(apiUrl(API_CONFIG.endpoints.tasks), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // Include cookies for session
         body: JSON.stringify(payload)
       });
       
