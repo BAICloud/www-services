@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { apiUrl, API_CONFIG } from '$lib/api-config.js';
   
   let task = null;
   let loading = true;
@@ -77,9 +76,7 @@
     loading = true;
     error = null;
     try {
-      const response = await fetch(apiUrl(API_CONFIG.endpoints.task(taskId)), {
-        credentials: 'include' // Include cookies for session
-      });
+      const response = await fetch(`https://loud-starling-77.deno.dev/tasks/${taskId}`);
       if (!response.ok) {
         throw new Error('Task not found');
       }
@@ -131,9 +128,7 @@
     
     try {
       // Load all tasks
-      const response = await fetch(apiUrl(API_CONFIG.endpoints.tasks), {
-        credentials: 'include' // Include cookies for session
-      });
+      const response = await fetch('https://loud-starling-77.deno.dev/tasks');
       const allTasks = await response.json();
       
       // Filter out current task

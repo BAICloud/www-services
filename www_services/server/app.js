@@ -2,16 +2,12 @@ import { Hono } from "@hono/hono";
 import { cors } from "@hono/hono/cors";
 import { logger } from "@hono/hono/logger";
 
-import * as middlewares from "./middlewares.js";
 import * as taskControl from "./task-control.js"
 
 const app = new Hono();
 
 app.use("/*", cors());
 app.use("/*", logger());        //For logging requests to this URL
-
-// Middleware to add user to context (c.user)
-app.use("*", middlewares.addUserToContextMiddleware);
 /*
 const sql = postgres();
 
@@ -32,11 +28,5 @@ app.post("/tasks", taskControl.createTask);
 app.get("/tasks/:id", taskControl.showTask);
 app.post("/tasks/:id", taskControl.updateTask);
 app.post("/tasks/:id/delete", taskControl.deleteTask);
-
-// Auth endpoints - return current user from context
-app.get("/auth/session", (c) => {
-  // Return current user from middleware (c.user)
-  return c.json({ user: c.user || null });
-});
 
 export default app;

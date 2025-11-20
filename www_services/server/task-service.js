@@ -6,21 +6,15 @@ const sql = postgres();
 const createTask = async (task) => {
   const id = crypto.randomUUID();
   
-  const { name, description, location, price, type, userId } = task;
-  
-  // Use userId from task, or default to 'anonymous'
-  const user_id = userId || 'anonymous';
-  const task_type = type || 'need';
-  const task_price = price ? parseFloat(price) : 0;
-  const task_location = location || 'Espoo, Finland';
+  const { name, description } = task;
   
   const result = await sql`
-    INSERT INTO tasks (id, name, description, user_id, location, price, type)
-    VALUES (${id}, ${name}, ${description}, ${user_id}, ${task_location}, ${task_price}, ${task_type})
+    INSERT INTO tasks (id, name, description)
+    VALUES (${id}, ${name}, ${description})
     RETURNING *;
   `;
 
-  return result[0];
+  console.log(result[0]);
 }
 
 //Get task with id
@@ -34,26 +28,23 @@ const readTask = async (id) => {
 
 //Update a task of a given ID
 const updateTask = async (id, task) => {
-  const { name, description, location, price, type } = task;
-  
-  const task_price = price ? parseFloat(price) : 0;
-  const task_location = location || 'Espoo, Finland';
-  const task_type = type || 'need';
+  const { name, description } = task;
 
   const result = await sql`
     UPDATE tasks
-    SET name=${name}, description=${description}, location=${task_location}, price=${task_price}, type=${task_type}, time=CURRENT_TIMESTAMP
+    SET name=${name}, description=${description}, time=CURRENT_TIMESTAMP
     WHERE id=${id}
     RETURNING *;
   `;
 
-  return result[0];
+  console.log(result[0]);
 }
 
 //Delete a task 
 const deleteTask = async (id) => {
   const result = await sql`DELETE FROM tasks WHERE id=${id} RETURNING *;`;
-  return result[0];
+
+  console.log(result[0]);
 }
 
 const listAllTasks = async () => {

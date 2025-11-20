@@ -1,18 +1,11 @@
-FROM node:20-alpine
+FROM denoland/deno:alpine-2.0.2
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+COPY package.json .
 
-# Install dependencies
-RUN npm install
+RUN DENO_FUTURE=1 deno install
 
-# Copy source code (node_modules excluded via .dockerignore)
 COPY . .
 
-# Expose port
-EXPOSE 5173
-
-# Start dev server
-CMD ["npm", "run", "dev", "--", "--host"]
+CMD [ "run", "dev", "--host"]
