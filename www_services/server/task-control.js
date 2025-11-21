@@ -7,16 +7,29 @@ import * as taskService from "./task-service.js";
 const createTask = async (c) => {
   const body = await c.req.json();
   
-  const result = await taskService.createTask(body);
+  // Get userId from context (set by middleware) or from request body
+  const userId = c.user?.id || body.userId || 'anonymous';
+  
+  // Ensure userId is in the task object
+  const task = {
+    ...body,
+    userId: userId
+  };
+  
+  const result = await taskService.createTask(task);
   return c.json(result, 201);
 }
 
 const showTask = async (c) => {
   const id = c.req.param('id');
 
-  const result = taskService.readTask(id)
+  const result = await taskService.readTask(id);
+  
+  if (!result) {
+    return c.json({ message: "task not found" }, 404);
+  }
 
-  return c.json(result);
+  return c.json(result, 200);
 }
 
 const updateTask = async (c) => {

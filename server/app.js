@@ -9,7 +9,13 @@ import * as taskControl from "./task-control.js";
 
 const app = new Hono();
 
-app.use("/*", cors());
+// CORS configuration to allow frontend access
+app.use("/*", cors({
+  origin: ['http://localhost:5173', 'http://localhost:8000'],
+  credentials: true,
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use("/*", logger());        //For logging requests to this URL
 
 //Middlewares for keeping track of user information
@@ -45,13 +51,18 @@ app.post("/users", userManager.registerUser)
 app.post("/login", userManager.authenticateUser)
 */
 
-//app.get("/auth/registration", );                              //Show form for registration
-app.post("/auth/registration", authControl.registerUser);       //Form should post here to register user
-//app.get("/auth/login", ???);                                  //Show form for logging in
-app.post("/auth/login", authControl.loginUser);                 //Form should post here to log user in
-app.post("/auth/logout", authControl.logoutUser);               //Form should post here to log user out
-app.get("/auth/session", async (c) => {
-  return c.json({ user: c.user });                              //Return current user (for clientside)
+//app.get("/auth/registration", );         //Show form for registration
+app.post("/auth/registration", authControl.registerUser);        //Form should post here to register user
+app.post("/auth/send-code", authControl.sendVerificationCode);  //Send verification code to email
+app.post("/auth/verify-code", authControl.verifyCode);          //Verify email code
+//app.get("/auth/login", ???);                //Show form for logging in
+app.post("/auth/login", authControl.loginUser);               //Form should post here to log user in
+app.post("/auth/logout", authControl.logoutUser);              //Form should post here to log user out
+
+// Auth endpoints - return current user from context
+app.get("/auth/session", (c) => {
+  // Return current user from middleware (c.user)
+  return c.json({ user: c.user || null });
 });
 
 export default app;

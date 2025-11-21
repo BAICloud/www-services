@@ -36,8 +36,8 @@
     searchQuery = $page.url.searchParams.get('q') || '';
   }
   
-  // Reload tasks when search query changes (only in browser)
-  $: if (searchQuery !== undefined && browser) {
+  // Reload tasks when search query changes
+  $: if (searchQuery !== undefined) {
     loadTasks();
   }
   
@@ -247,18 +247,18 @@
         lat = coords.lat;
         lng = coords.lng;
       } else {
-        // Generate stable position based on task ID using a simple hash
-        function hashString(str) {
+      // Generate stable position based on task ID using a simple hash
+      function hashString(str) {
           if (!str || typeof str !== 'string') return 0;
-          let hash = 0;
-          for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
-          }
-          return hash;
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+          const char = str.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash;
         }
-        
+        return hash;
+      }
+      
         // Use a combination of hash and index to ensure unique positions
         // This prevents all markers from overlapping if task IDs are missing or identical
         const hash = Math.abs(hashString(taskId));
@@ -502,9 +502,6 @@
   }
   
   async function loadTasks() {
-    // Only run in browser
-    if (!browser) return;
-    
     loading = true;
     try {
       const response = await fetch(apiUrl(API_CONFIG.endpoints.tasks), {
@@ -973,7 +970,7 @@
       
       <!-- Right: Map -->
       <aside class="map-panel">
-        <div class="map-header">
+          <div class="map-header">
           <button 
             class="search-area-btn {filterByMapBounds ? 'active' : ''}"
             on:click={handleSearchThisArea}
@@ -981,7 +978,7 @@
           >
             {filterByMapBounds ? 'Clear area filter' : 'Search this area'}
           </button>
-        </div>
+          </div>
         <div class="map-container">
           <div bind:this={mapContainer} class="leaflet-container"></div>
         </div>

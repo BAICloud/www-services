@@ -1,44 +1,207 @@
 <script>
   import { goto } from '$app/navigation';
+  import { onMount } from 'svelte';
+  import { apiUrl, API_CONFIG } from '$lib/api-config.js';
   
-  let taskForm = {
-    name: '',
-    description: ''
-  };
+  let postType = 'need';
+  let uploadedImages = [];
+  let postTitle = '';
+  let description = '';
+  let price = '';
+  let location = 'Espoo, Finland';
+  let showLocationSuggestions = false;
+  let locationSuggestions = [];
+  let searchingLocation = false;
   
   let submitting = false;
-  let success = false;
+  let isLoggedIn = false;
+  let currentUser = null;
+  let showUserMenu = false;
+  let showLanguageMenu = false;
+  let currentLanguage = 'en';
   
-  async function handleSubmit() {
-    if (!taskForm.name.trim() || !taskForm.description.trim()) {
+  async function fetchCurrentUser() {
+    try {
+      const response = await fetch(apiUrl(API_CONFIG.endpoints.auth.session), {
+        credentials: 'include' // Include cookies for session
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.user) {
+          currentUser = data.user;
+          isLoggedIn = true;
+          // Also save to localStorage for fallback
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      // Fallback to localStorage if server request fails
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      currentUser = JSON.parse(userData);
+      isLoggedIn = true;
+      }
+    }
+    }
+  
+  onMount(async () => {
+    // Try to get user from server first (c.user from middleware)
+    await fetchCurrentUser();
+    
+    const savedLanguage = localStorage.getItem('language');
+    if (savedLanguage) {
+      currentLanguage = savedLanguage;
+    }
+  });
+  
+  function handleLogout() {
+    localStorage.removeItem('user');
+    isLoggedIn = false;
+    currentUser = null;
+    showUserMenu = false;
+  }
+  
+  function changeLanguage(lang) {
+    currentLanguage = lang;
+    localStorage.setItem('language', lang);
+    showLanguageMenu = false;
+  }
+  
+  function toggleUserMenu() {
+    showUserMenu = !showUserMenu;
+  }
+  
+  function toggleLanguageMenu() {
+    showLanguageMenu = !showLanguageMenu;
+  }
+  
+  const languages = {
+    en: 'English',
+    sv: 'Svenska',
+    fi: 'Suomi'
+  };
+  
+  function handleImageUpload(event) {
+    const files = event.target.files;
+    if (files.length > 6) {
+      alert('Maximum of 6 pictures allowed');
+      return;
+    }
+    uploadedImages = Array.from(files);
+  }
+  
+  async function getCurrentLocation() {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
+    }
+    
+    searchingLocation = true;
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        
+        // Use OpenStreetMap Nominatim API for reverse geocoding
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
+          );
+          const data = await response.json();
+          
+          if (data.address) {
+            const parts = [];
+            if (data.address.city) parts.push(data.address.city);
+            if (data.address.state) parts.push(data.address.state);
+            if (data.address.country) parts.push(data.address.country);
+            location = parts.join(', ') || `${latitude}, ${longitude}`;
+          }
+        } catch (error) {
+          console.error('Error getting location:', error);
+          location = `${latitude}, ${longitude}`;
+        }
+        searchingLocation = false;
+      },
+      (error) => {
+        console.error('Error getting location:', error);
+        alert('Unable to get your location');
+        searchingLocation = false;
+      }
+    );
+  }
+  
+  async function searchLocation(query) {
+    if (!query.trim()) {
+      locationSuggestions = [];
+      showLocationSuggestions = false;
+      return;
+    }
+    
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`
+      );
+      const data = await response.json();
+      
+      locationSuggestions = data.map(item => ({
+        display_name: item.display_name,
+        lat: item.lat,
+        lon: item.lon
+      }));
+      showLocationSuggestions = true;
+    } catch (error) {
+      console.error('Error searching location:', error);
+    }
+  }
+  
+  function handleLocationChange(value) {
+    location = value;
+    searchLocation(value);
+  }
+  
+  function selectLocation(suggestion) {
+    location = suggestion.display_name;
+    showLocationSuggestions = false;
+    locationSuggestions = [];
+  }
+  
+  async function handlePost() {
+    if (!postTitle.trim() || !description.trim()) {
       alert('Please fill in all required fields');
       return;
     }
     
     submitting = true;
     try {
-      const response = await fetch('http://localhost:3001/tasks', {
+      const sanitizedPrice = (price ?? '').toString().trim();
+      const sanitizedLocation = (location ?? '').toString().trim();
+      const payload = {
+        name: postTitle.trim(),
+        description: description.trim(),
+        price: sanitizedPrice !== '' ? sanitizedPrice : '0',
+        location: sanitizedLocation !== '' ? sanitizedLocation : 'Espoo, Finland',
+        type: postType || 'need',
+        userId: currentUser?.id || currentUser?.email || currentUser?.name || 'anonymous'
+      };
+      
+      const response = await fetch(apiUrl(API_CONFIG.endpoints.tasks), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name: taskForm.name,
-          description: taskForm.description
-        })
+        credentials: 'include', // Include cookies for session
+        body: JSON.stringify(payload)
       });
       
       if (response.ok) {
-        success = true;
-        setTimeout(() => {
-          goto('/search');
-        }, 2000);
+        alert('Post created successfully!');
+        goto('/search');
       } else {
-        throw new Error('Failed to create task');
+        throw new Error('Failed to create post');
       }
     } catch (error) {
-      console.error('Error creating task:', error);
-      alert('Failed to create task. Please try again.');
+      console.error('Error creating post:', error);
+      alert('Failed to create post. Please try again.');
     } finally {
       submitting = false;
     }

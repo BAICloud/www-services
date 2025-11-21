@@ -10,11 +10,36 @@ const sql = postgres();
 const createTask = async (userID, task) => {
   const id = crypto.randomUUID();
   
+<<<<<<< HEAD
   const { name, description, location, category, type, price } = task;
   
   const result = await sql`
     INSERT INTO tasks (id, name, description, user_id, location, category, type, price)
     VALUES (${id}, ${name}, ${description}, ${userID}, ${location}, ${category}, ${type}, ${price})
+=======
+  const { name, description, location, price, type } = task;
+  
+  // Validate and convert userID to UUID format
+  // If userID is not a valid UUID, generate one or use a default
+  let userIdUuid = userID;
+  try {
+    // Try to validate if it's a valid UUID format
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userID)) {
+      // Not a valid UUID, generate a new one or use a default anonymous UUID
+      userIdUuid = '00000000-0000-0000-0000-000000000000'; // Anonymous user UUID
+    }
+  } catch (e) {
+    userIdUuid = '00000000-0000-0000-0000-000000000000';
+  }
+  
+  const taskType = type || 'need';
+  const taskPrice = price ? parseFloat(price) : 0;
+  const taskLocation = location || 'Espoo, Finland';
+  
+  const result = await sql`
+    INSERT INTO tasks (id, name, description, user_id, location, price, type)
+    VALUES (${id}, ${name}, ${description}, ${userIdUuid}::uuid, ${taskLocation}, ${taskPrice}, ${taskType}::task_type)
+>>>>>>> 2363e5d66071eec9170cd5f27c81ba77e62374b4
     RETURNING *;
   `;
 
@@ -37,11 +62,15 @@ const readTask = async (id) => {
 
 //Update a task of a given ID
 const updateTask = async (id, task) => {
-  const { name, description, location, price } = task;
+  const { name, description, location, price, type } = task;
+  
+  const taskType = type || 'need';
+  const taskPrice = price ? parseFloat(price) : 0;
+  const taskLocation = location || 'Espoo, Finland';
 
   const result = await sql`
     UPDATE tasks
-    SET name=${name}, description=${description}, location=${location}, price=${price}, time=CURRENT_TIMESTAMP
+    SET name=${name}, description=${description}, location=${taskLocation}, price=${taskPrice}, type=${taskType}::task_type, time=CURRENT_TIMESTAMP
     WHERE id=${id}
     RETURNING *;
   `;
