@@ -40,6 +40,8 @@
   });
 
   async function handleLogin() {
+    console.log(API_CONFIG.baseURL);
+    
     error = '';
     loading = true;
 

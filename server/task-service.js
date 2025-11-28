@@ -1,10 +1,10 @@
 import postgres from "postgres";
-/*
+
 const connectionString = process.env.DATABASE_URL;
 const sql = postgres(connectionString);
-*/
 
-const sql = postgres();
+
+//const sql = postgres();
 
 //Create a new task
 const createTask = async (userID, task) => {
