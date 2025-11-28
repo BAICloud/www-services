@@ -5,19 +5,29 @@ import * as taskService from "./task-service.js";
 
 //Pass task as JSON file
 const createTask = async (c) => {
-  const body = await c.req.json();
-  
-  // Get userId from context (set by middleware) or from request body
-  const userId = c.user?.id || body.userId || 'anonymous';
-  
-  // Ensure userId is in the task object
-  const task = {
-    ...body,
-    userId: userId
-  };
-  
-  const result = await taskService.createTask(userId, task);
-  return c.json(result, 201);
+  try {
+    const body = await c.req.json();
+    
+    // Get userId from context (set by middleware) or from request body
+    const userId = c.user?.id || body.userId || 'anonymous';
+    
+    // Ensure userId is in the task object
+    const task = {
+      ...body,
+      userId: userId
+    };
+    
+    const result = await taskService.createTask(userId, task);
+    return c.json(result, 201);
+  } catch (error) {
+    console.error('Error creating task:', error);
+    console.error('Error stack:', error.stack);
+    return c.json({ 
+      error: 'Failed to create task', 
+      message: error.message,
+      details: error.stack 
+    }, 500);
+  }
 }
 
 const showTask = async (c) => {

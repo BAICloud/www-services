@@ -1,11 +1,16 @@
-FROM denoland/deno:alpine-2.0.2
+FROM denoland/deno:alpine-2.2.3
 
 WORKDIR /app
 
 COPY deno.json .
 
-RUN DENO_FUTURE=1 deno install
+# Install dependencies (will create new lockfile)
+RUN deno install --lock-write || deno install
 
-COPY . .
+# Copy source code
+COPY app*.js middlewares.js session-service.js task-control.js task-service.js auth-control.js email-service.js user-service.js ./
 
-CMD [ "run", "--allow-env", "--allow-net", "--watch", "app-run.js" ]
+# Remove lockfile if version incompatible
+RUN rm -f deno.lock
+
+CMD [ "run", "--allow-env", "--allow-net", "--no-lock", "app-run.js" ]

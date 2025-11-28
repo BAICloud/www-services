@@ -35,7 +35,18 @@ app.post("/auth/verify-code", authControl.verifyCode);
 app.post("/auth/login", authControl.loginUser);
 app.post("/auth/logout", authControl.logoutUser);
 app.get("/auth/session", (c) => {
-  return c.json({ user: c.user || null });
+  if (!c.user) {
+    return c.json({ user: null });
+  }
+  
+  // Ensure user object has all necessary fields
+  return c.json({ 
+    user: {
+      id: c.user.id,
+      username: c.user.username || c.user.name,
+      email: c.user.email
+    }
+  });
 });
 
 export default app;

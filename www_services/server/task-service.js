@@ -65,6 +65,17 @@ const listAllTasks = async () => {
   return result;
 }
 
+// Get tasks by user ID
+const getTasksByUserId = async (userId) => {
+  const result = await sql`
+    SELECT * FROM tasks
+    WHERE user_id = ${userId}
+    ORDER BY time DESC;
+  `;
+
+  return result;
+}
+
 const markTaskAsComplete = async (id) => {
   const result = await sql `
     UPDATE tasks
@@ -81,4 +92,4 @@ const markTaskAsIncomplete = async (id) => {
   `;
 }
 
-export { createTask, readTask, updateTask, deleteTask, listAllTasks, markTaskAsComplete, markTaskAsIncomplete }
+export { createTask, readTask, updateTask, deleteTask, listAllTasks, getTasksByUserId, markTaskAsComplete, markTaskAsIncomplete }

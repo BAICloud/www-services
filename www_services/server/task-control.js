@@ -48,8 +48,15 @@ const deleteTask = async (c) => {
 }
 
 const listAllTasks = async (c) => {
-  const result = await taskService.listAllTasks();
+  // Check if filtering by user_id
+  const userId = c.req.query('userId');
+  
+  if (userId) {
+    const result = await taskService.getTasksByUserId(userId);
+    return c.json(result, 200);
+  }
 
+  const result = await taskService.listAllTasks();
   return c.json(result, 200);
 }
 

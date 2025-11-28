@@ -18,8 +18,17 @@ export const API_CONFIG = {
       logout: '/auth/logout',
       register: '/auth/registration',
       sendCode: '/auth/send-code',
-      verifyCode: '/auth/verify-code'
-    }
+      verifyCode: '/auth/verify-code',
+      updateProfile: '/auth/update-profile'
+    },
+    messages: {
+      send: '/messages',
+      conversations: '/messages/conversations',
+      conversation: (taskId, otherUserId) => `/messages/task/${taskId}?otherUserId=${otherUserId}`,
+      messages: (taskId, otherUserId) => `/messages/task/${taskId}/messages?otherUserId=${otherUserId}`
+    },
+    users: '/users',
+    user: (id) => `/users/${id}`
   }
 };
 

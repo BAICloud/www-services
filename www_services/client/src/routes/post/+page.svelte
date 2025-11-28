@@ -1,10 +1,11 @@
 <script>
   import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { apiUrl, API_CONFIG } from '$lib/api-config.js';
   
   let postType = 'need';
   let uploadedImages = [];
+  let imageUrls = [];
   let postTitle = '';
   let description = '';
   let price = '';
@@ -37,13 +38,13 @@
     } catch (error) {
       console.error('Error fetching user:', error);
       // Fallback to localStorage if server request fails
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      currentUser = JSON.parse(userData);
-      isLoggedIn = true;
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        currentUser = JSON.parse(userData);
+        isLoggedIn = true;
       }
     }
-    }
+  }
   
   onMount(async () => {
     // Try to get user from server first (c.user from middleware)
@@ -88,8 +89,19 @@
       alert('Maximum of 6 pictures allowed');
       return;
     }
+    
+    // Clean up old URLs
+    imageUrls.forEach(url => URL.revokeObjectURL(url));
+    
+    // Store files and create preview URLs
     uploadedImages = Array.from(files);
+    imageUrls = uploadedImages.map(file => URL.createObjectURL(file));
   }
+  
+  // Cleanup on component destroy
+  onDestroy(() => {
+    imageUrls.forEach(url => URL.revokeObjectURL(url));
+  });
   
   async function getCurrentLocation() {
     if (!navigator.geolocation) {
@@ -193,15 +205,27 @@
         body: JSON.stringify(payload)
       });
       
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+      
       if (response.ok) {
+        const result = await response.json();
+        console.log('Post created successfully:', result);
         alert('Post created successfully!');
         goto('/search');
       } else {
-        throw new Error('Failed to create post');
+        const errorText = await response.text();
+        console.error('Failed to create post. Status:', response.status, 'Response:', errorText);
+        throw new Error(`Failed to create post: ${response.status} - ${errorText}`);
       }
     } catch (error) {
       console.error('Error creating post:', error);
-      alert('Failed to create post. Please try again.');
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        cause: error.cause
+      });
+      alert(`Failed to create post. Please try again. Error: ${error.message}`);
     } finally {
       submitting = false;
     }
@@ -335,9 +359,12 @@
         </div>
         {#if uploadedImages.length > 0}
           <div class="uploaded-images">
-            {#each uploadedImages as image}
+            {#each uploadedImages as image, index}
               <div class="image-preview">
-                <img src={URL.createObjectURL(image)} alt="Preview" />
+                <img src={imageUrls[index]} alt="Preview" on:error={(e) => {
+                  console.error('Image load error:', e);
+                  e.target.style.display = 'none';
+                }} />
               </div>
             {/each}
           </div>
@@ -764,12 +791,18 @@
     height: 100px;
     border-radius: 8px;
     overflow: hidden;
+    border: 2px solid #EAF2FD;
+    background: #F5F5F5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   
   .image-preview img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
   }
   
   /* Form Inputs */

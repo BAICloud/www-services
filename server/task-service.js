@@ -10,7 +10,7 @@ const sql = postgres();
 const createTask = async (userID, task) => {
   const id = crypto.randomUUID();
   
-  const { name, description, location, price, type } = task;
+  const { name, description, location, price, type, images } = task;
   
   // Validate and convert userID to UUID format
   // If userID is not a valid UUID, generate one or use a default
@@ -29,13 +29,31 @@ const createTask = async (userID, task) => {
   const taskPrice = price ? parseFloat(price) : 0;
   const taskLocation = location || 'Espoo, Finland';
   
-  const result = await sql`
-    INSERT INTO tasks (id, name, description, user_id, location, price, type)
-    VALUES (${id}, ${name}, ${description}, ${userIdUuid}::uuid, ${taskLocation}, ${taskPrice}, ${taskType}::task_type)
-    RETURNING *;
-  `;
-
-  return result[0];
+  // Handle images - convert to JSON array if provided
+  const imagesJson = images && Array.isArray(images) ? JSON.stringify(images) : '[]';
+  
+  try {
+    // Try to insert with images column first
+    const result = await sql`
+      INSERT INTO tasks (id, name, description, user_id, location, price, type, images)
+      VALUES (${id}, ${name}, ${description}, ${userIdUuid}::uuid, ${taskLocation}, ${taskPrice}, ${taskType}::task_type, ${imagesJson}::jsonb)
+      RETURNING *;
+    `;
+    return result[0];
+  } catch (error) {
+    // If images column doesn't exist, try without it
+    if (error.message && error.message.includes('column "images"')) {
+      console.warn('Images column not found, inserting without images. Please run migration V4__task_images.sql');
+      const result = await sql`
+        INSERT INTO tasks (id, name, description, user_id, location, price, type)
+        VALUES (${id}, ${name}, ${description}, ${userIdUuid}::uuid, ${taskLocation}, ${taskPrice}, ${taskType}::task_type)
+        RETURNING *;
+      `;
+      return result[0];
+    }
+    // Re-throw other errors
+    throw error;
+  }
 }
 
 //Get task with id
@@ -47,8 +65,31 @@ const readTask = async (id) => {
   if(result.length === 0) {
     return null;
   }
+
+  const task = result[0];
   
-  return result[0];
+  // Ensure images is properly parsed if it exists
+  if (task.images) {
+    // If images is already an array, keep it as is
+    // If it's a JSONB field, it should already be parsed by postgres.js
+    // But if it's a string, parse it
+    if (typeof task.images === 'string') {
+      try {
+        task.images = JSON.parse(task.images);
+      } catch (e) {
+        console.warn('Failed to parse images string:', e);
+        task.images = [];
+      }
+    }
+    // Ensure it's an array
+    if (!Array.isArray(task.images)) {
+      task.images = [];
+    }
+  } else {
+    task.images = [];
+  }
+  
+  return task;
 }
 
 //Update a task of a given ID

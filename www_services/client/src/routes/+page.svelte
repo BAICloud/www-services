@@ -255,7 +255,7 @@
         </div>
       </div>
       <div class="footer-bottom">
-        <p>&copy; 2024 HandyGO - CS-E4400 Design of WWW Services</p>
+        <p>&copy; 2025 HandyGO - CS-E4400 Design of WWW Services</p>
       </div>
     </div>
   </footer>

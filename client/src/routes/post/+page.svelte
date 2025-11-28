@@ -1,10 +1,11 @@
 <script>
   import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { apiUrl, API_CONFIG } from '$lib/api-config.js';
   
   let postType = 'need';
   let uploadedImages = [];
+  let imageUrls = [];
   let postTitle = '';
   let description = '';
   let price = '';
@@ -45,13 +46,67 @@
     }
   }
   
+  function handleUserUpdate(event) {
+    // Try to get user from event detail first, then localStorage
+    let updatedUser = null;
+    if (event && event.detail && event.detail.user) {
+      updatedUser = event.detail.user;
+    } else {
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        try {
+          updatedUser = JSON.parse(userData);
+        } catch (e) {
+          console.error('Failed to parse user data:', e);
+        }
+      }
+    }
+    
+    if (updatedUser) {
+      // Force reactivity by creating a new object
+      currentUser = { ...updatedUser };
+      isLoggedIn = true;
+    } else {
+      currentUser = null;
+      isLoggedIn = false;
+    }
+  }
+  
   onMount(async () => {
     // Try to get user from server first (c.user from middleware)
     await fetchCurrentUser();
     
+    // If not logged in, redirect to login page after showing message
+    if (!isLoggedIn) {
+      console.log('User not logged in, showing login prompt');
+    }
+    
     const savedLanguage = localStorage.getItem('language');
     if (savedLanguage) {
       currentLanguage = savedLanguage;
+    }
+    
+    // Listen for user updates from other tabs/pages
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'user') {
+          handleUserUpdate();
+        }
+      });
+      
+      // Also listen for custom events within the same tab
+      window.addEventListener('userUpdated', handleUserUpdate);
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'user') {
+          handleUserUpdate(e);
+        }
+      });
+    }
+  });
+  
+  onDestroy(() => {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('userUpdated', handleUserUpdate);
     }
   });
   
@@ -84,12 +139,47 @@
   
   function handleImageUpload(event) {
     const files = event.target.files;
-    if (files.length > 6) {
-      alert('Maximum of 6 pictures allowed');
+    if (!files || files.length === 0) return;
+    
+    // Calculate how many more images we can add
+    const currentCount = uploadedImages.length;
+    const remainingSlots = 6 - currentCount;
+    
+    if (remainingSlots <= 0) {
+      alert('Maximum of 6 pictures allowed. Please remove some images first.');
+      event.target.value = ''; // Clear the input
       return;
     }
-    uploadedImages = Array.from(files);
+    
+    // Only take as many files as we have remaining slots
+    const filesToAdd = Array.from(files).slice(0, remainingSlots);
+    
+    // If user tried to add more than remaining slots, show a warning
+    if (files.length > remainingSlots) {
+      alert(`You can only add ${remainingSlots} more picture(s). Only the first ${remainingSlots} will be added.`);
+    }
+    
+    // Append new files to existing ones
+    uploadedImages = [...uploadedImages, ...filesToAdd];
+    imageUrls = uploadedImages.map(file => URL.createObjectURL(file));
+    
+    // Clear the input so the same file can be selected again
+    event.target.value = '';
   }
+  
+  function removeImage(index) {
+    // Revoke the URL for the image being removed
+    URL.revokeObjectURL(imageUrls[index]);
+    
+    // Remove the image and its URL
+    uploadedImages = uploadedImages.filter((_, i) => i !== index);
+    imageUrls = imageUrls.filter((_, i) => i !== index);
+  }
+  
+  // Cleanup on component destroy
+  onDestroy(() => {
+    imageUrls.forEach(url => URL.revokeObjectURL(url));
+  });
   
   async function getCurrentLocation() {
     if (!navigator.geolocation) {
@@ -165,7 +255,40 @@
     locationSuggestions = [];
   }
   
+  async function convertImagesToBase64() {
+    const base64Images = [];
+    for (const file of uploadedImages) {
+      try {
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            // Keep the full data URL format for easier display
+            resolve({
+              data: reader.result, // data:image/jpeg;base64,/9j/4AAQ...
+              mimeType: file.type || 'image/jpeg',
+              name: file.name || 'image.jpg'
+            });
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        base64Images.push(base64);
+      } catch (error) {
+        console.error('Error converting image to base64:', error);
+        // Continue with other images even if one fails
+      }
+    }
+    return base64Images;
+  }
+  
   async function handlePost() {
+    // Check login status before posting
+    if (!isLoggedIn || !currentUser) {
+      alert('Please log in to post a task. Redirecting to login page...');
+      goto('/login?redirect=/post');
+      return;
+    }
+    
     if (!postTitle.trim() || !description.trim()) {
       alert('Please fill in all required fields');
       return;
@@ -175,13 +298,18 @@
     try {
       const sanitizedPrice = (price ?? '').toString().trim();
       const sanitizedLocation = (location ?? '').toString().trim();
+      
+      // Convert images to base64
+      const images = await convertImagesToBase64();
+      
       const payload = {
         name: postTitle.trim(),
         description: description.trim(),
         price: sanitizedPrice !== '' ? sanitizedPrice : '0',
         location: sanitizedLocation !== '' ? sanitizedLocation : 'Espoo, Finland',
         type: postType || 'need',
-        userId: currentUser?.id || currentUser?.email || currentUser?.name || 'anonymous'
+        userId: currentUser?.id || currentUser?.email || currentUser?.name || 'anonymous',
+        images: images // Add images to payload
       };
       
       const response = await fetch(apiUrl(API_CONFIG.endpoints.tasks), {
@@ -200,6 +328,16 @@
         const result = await response.json();
         console.log('Post created successfully:', result);
         alert('Post created successfully!');
+        
+        // Clear form and uploaded images
+        postTitle = '';
+        description = '';
+        price = '';
+        location = 'Espoo, Finland';
+        uploadedImages = [];
+        imageUrls.forEach(url => URL.revokeObjectURL(url));
+        imageUrls = [];
+        
         goto('/search');
       } else {
         const errorText = await response.text();
@@ -236,8 +374,12 @@
         {#if isLoggedIn}
           <div class="user-menu-wrapper">
             <div class="user-info" on:click={toggleUserMenu}>
-              <img src="https://ui-avatars.com/api/?name={currentUser?.name || 'User'}&background=ECF86E&color=000" alt="User Avatar" class="user-avatar" />
-              <span class="user-name">{currentUser?.name || 'User'}</span>
+              {#if currentUser?.avatar_url}
+                <img src={currentUser.avatar_url} alt="User Avatar" class="user-avatar" />
+              {:else}
+                <img src="https://ui-avatars.com/api/?name={encodeURIComponent(currentUser?.name || currentUser?.username || 'User')}&background=ECF86E&color=000" alt="User Avatar" class="user-avatar" />
+              {/if}
+              <span class="user-name">{currentUser?.name || currentUser?.username || 'User'}</span>
               <svg width="12" height="8" viewBox="0 0 12 8" fill="none" class="dropdown-arrow">
                 <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
               </svg>
@@ -303,8 +445,44 @@
   </header>
 
   <div class="container">
-    <div class="post-content">
-      <h1 class="page-title">New Announcement</h1>
+    {#if !isLoggedIn}
+      <!-- Login Prompt Card -->
+      <div class="login-prompt">
+        <div class="login-prompt-content">
+          <div class="login-icon">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+              <polyline points="10 17 15 12 10 7"></polyline>
+              <line x1="15" y1="12" x2="3" y2="12"></line>
+            </svg>
+          </div>
+          <h2 class="login-prompt-title">Login Required</h2>
+          <p class="login-prompt-message">
+            You need to be logged in to post a task. Please log in or create an account to continue.
+          </p>
+          <div class="login-prompt-actions">
+            <button class="btn-login-prompt" on:click={() => goto('/login?redirect=/post')}>
+              Log In
+            </button>
+            <button class="btn-register-prompt" on:click={() => goto('/register?redirect=/post')}>
+              Create Account
+            </button>
+          </div>
+          <div class="login-prompt-benefits">
+            <p class="benefits-title">Benefits of creating an account:</p>
+            <ul class="benefits-list">
+              <li>✓ Post your tasks and needs</li>
+              <li>✓ Connect with other students</li>
+              <li>✓ Manage your posted tasks</li>
+              <li>✓ Build your reputation</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    {:else}
+      <!-- Post Form (only shown when logged in) -->
+      <div class="post-content">
+        <h1 class="page-title">New Announcement</h1>
       
       <!-- Type Selection -->
       <div class="form-section">
@@ -347,9 +525,22 @@
         </div>
         {#if uploadedImages.length > 0}
           <div class="uploaded-images">
-            {#each uploadedImages as image}
+            {#each uploadedImages as image, index}
               <div class="image-preview">
-                <img src={URL.createObjectURL(image)} alt="Preview" />
+                <img src={imageUrls[index]} alt="Preview {index + 1}" on:error={(e) => {
+                  console.error('Image load error:', e);
+                  e.target.style.display = 'none';
+                }} />
+                <button 
+                  class="remove-image-btn" 
+                  on:click={() => removeImage(index)}
+                  aria-label="Remove image"
+                  title="Remove image"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/>
+                  </svg>
+                </button>
               </div>
             {/each}
           </div>
@@ -446,7 +637,8 @@
           {submitting ? 'Posting...' : 'Post'}
         </button>
       </div>
-    </div>
+      </div>
+    {/if}
   </div>
 </main>
 
@@ -776,12 +968,49 @@
     height: 100px;
     border-radius: 8px;
     overflow: hidden;
+    border: 2px solid #EAF2FD;
+    background: #F5F5F5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
   }
   
   .image-preview img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
+  }
+  
+  .remove-image-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid #EAF2FD;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    padding: 0;
+    color: #666;
+  }
+  
+  .remove-image-btn:hover {
+    background: rgba(255, 0, 0, 0.1);
+    border-color: #FF0000;
+    color: #FF0000;
+    transform: scale(1.1);
+  }
+  
+  .remove-image-btn svg {
+    width: 14px;
+    height: 14px;
   }
   
   /* Form Inputs */
@@ -943,6 +1172,127 @@
     cursor: not-allowed;
   }
   
+  /* Login Prompt */
+  .login-prompt {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 60vh;
+    padding: 2rem 20px;
+  }
+  
+  .login-prompt-content {
+    background: #FFFFFF;
+    border: 2px solid #EAF2FD;
+    border-radius: 16px;
+    padding: 3rem;
+    max-width: 600px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  }
+  
+  .login-icon {
+    margin: 0 auto 1.5rem;
+    width: 80px;
+    height: 80px;
+    background: #F8FFCB;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #000;
+  }
+  
+  .login-prompt-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #000000;
+    margin-bottom: 1rem;
+  }
+  
+  .login-prompt-message {
+    font-size: 1.1rem;
+    color: #666;
+    line-height: 1.6;
+    margin-bottom: 2rem;
+  }
+  
+  .login-prompt-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-bottom: 2rem;
+  }
+  
+  .btn-login-prompt {
+    background: #000000;
+    border: 2px solid #000000;
+    color: #FFFFFF;
+    padding: 0.875rem 2rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .btn-login-prompt:hover {
+    background: #333333;
+    border-color: #333333;
+    transform: translateY(-2px);
+  }
+  
+  .btn-register-prompt {
+    background: #ECF86E;
+    border: 2px solid #ECF86E;
+    color: #000000;
+    padding: 0.875rem 2rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .btn-register-prompt:hover {
+    background: #E0F055;
+    border-color: #E0F055;
+    transform: translateY(-2px);
+  }
+  
+  .login-prompt-benefits {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid #EAF2FD;
+    text-align: left;
+  }
+  
+  .benefits-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #000000;
+    margin-bottom: 1rem;
+    text-align: center;
+  }
+  
+  .benefits-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+  
+  .benefits-list li {
+    font-size: 0.95rem;
+    color: #666;
+    padding: 0.5rem;
+    background: #F8FFCB;
+    border-radius: 6px;
+  }
+  
   /* Responsive */
   @media (max-width: 768px) {
     .upload-container {
@@ -956,6 +1306,23 @@
     
     .post-btn {
       width: 100%;
+    }
+    
+    .login-prompt-content {
+      padding: 2rem 1.5rem;
+    }
+    
+    .login-prompt-actions {
+      flex-direction: column;
+    }
+    
+    .btn-login-prompt,
+    .btn-register-prompt {
+      width: 100%;
+    }
+    
+    .benefits-list {
+      grid-template-columns: 1fr;
     }
   }
 </style>

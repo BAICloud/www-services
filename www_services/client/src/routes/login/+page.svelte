@@ -1,6 +1,5 @@
 <script>
   import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
   import { apiUrl, API_CONFIG } from '$lib/api-config.js';
   import { onMount } from 'svelte';
   import { browser } from '$app/environment';
@@ -10,34 +9,6 @@
   let showPassword = false;
   let error = '';
   let loading = false;
-  let showLanguageMenu = false;
-  let currentLanguage = 'en';
-  
-  // Get redirect URL from query params
-  $: redirectUrl = $page.url.searchParams.get('redirect') || '/';
-  
-  const languages = {
-    en: 'English',
-    sv: 'Svenska',
-    fi: 'Suomi'
-  };
-  
-  function toggleLanguageMenu() {
-    showLanguageMenu = !showLanguageMenu;
-  }
-  
-  function changeLanguage(lang) {
-    currentLanguage = lang;
-    localStorage.setItem('language', lang);
-    showLanguageMenu = false;
-  }
-  
-  onMount(() => {
-    const savedLanguage = localStorage.getItem('language');
-    if (savedLanguage) {
-      currentLanguage = savedLanguage;
-    }
-  });
 
   async function handleLogin() {
     error = '';
@@ -70,12 +41,9 @@
         if (data.user) {
           if (browser) {
             localStorage.setItem('user', JSON.stringify(data.user));
-            // Dispatch event to update other components
-            window.dispatchEvent(new CustomEvent('userUpdated'));
           }
         }
-        // Redirect to the specified URL or home page
-        goto(redirectUrl);
+        goto('/');
       } else {
         error = data.error || data.message || 'Login failed. Please check your credentials.';
       }
@@ -92,56 +60,45 @@
   <title>Log in - HandyGO</title>
 </svelte:head>
 
-<div class="auth-container">
+<div class="auth-page">
   <!-- Top Header -->
-  <header class="header">
-    <div class="container">
-      <div class="nav-left" on:click={() => goto('/')} role="button" tabindex="0">
+  <header class="top-header">
+    <div class="header-content">
+      <button class="back-button" on:click={() => goto('/')}>
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        BACK
+      </button>
+      <button class="logo-button" on:click={() => goto('/')}>
         <img src="/favicon.png" alt="HandyGO" class="logo-icon" />
-        <h1 class="logo">HandyGO</h1>
-      </div>
-      <nav class="nav-right">
-        <!-- Language Selector -->
-        <div class="language-wrapper">
-          <button class="language-btn" on:click={toggleLanguageMenu}>
-            {languages[currentLanguage]}
-            <svg width="12" height="8" viewBox="0 0 12 8" fill="none" class="dropdown-arrow">
-              <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          </button>
-          {#if showLanguageMenu}
-            <div class="language-dropdown">
-              <button class="dropdown-item" class:active={currentLanguage === 'en'} on:click={() => changeLanguage('en')}>
-                English
-              </button>
-              <button class="dropdown-item" class:active={currentLanguage === 'sv'} on:click={() => changeLanguage('sv')}>
-                Svenska
-              </button>
-              <button class="dropdown-item" class:active={currentLanguage === 'fi'} on:click={() => changeLanguage('fi')}>
-                Suomi
-              </button>
-            </div>
-          {/if}
-        </div>
-      </nav>
+        <span class="logo-text">HandyGo</span>
+      </button>
     </div>
   </header>
 
   <!-- Main Content Area -->
-  <div class="content-wrapper">
-    <!-- Left Card - Marketing -->
-    <div class="marketing-card">
-      <h1 class="marketing-title">Connect & Get It Done</h1>
-      <p class="marketing-description">
-        Connect with verified fellow students for quick, reliable help with campus tasks.
-      </p>
-      <div class="marketing-illustration">
-        <img src="/login-illustration.png" alt="HandyGO Illustration" class="illustration-image" />
+  <main class="main-content-area">
+    <div class="content-wrapper">
+      <!-- Left Card - Marketing -->
+      <div class="marketing-card">
+        <div class="logo-section">
+          <div class="logo">
+            <img src="/favicon.png" alt="HandyGO" class="logo-icon-large" />
+            <span class="logo-text-large">HandyGo</span>
+          </div>
+        </div>
+        <h1 class="marketing-title">Connect & Get It Done</h1>
+        <p class="marketing-description">
+          Connect with verified fellow students for quick, reliable help with campus tasks.
+        </p>
+        <div class="marketing-illustration">
+          <img src="/login-illustration.png" alt="HandyGO Illustration" class="illustration-image" />
+        </div>
       </div>
-    </div>
 
-    <!-- Right Card - Login Form -->
-    <div class="form-card">
+      <!-- Right Card - Login Form -->
+      <div class="form-card">
         <h2 class="form-title">Welcome Back</h2>
 
         {#if error}
@@ -201,8 +158,12 @@
           <span>Haven't registered yet?</span>
           <a href="/register" class="link">Create an account</a>
         </div>
+        
+        <!-- Decorative element -->
+        <div class="decorative-element"></div>
       </div>
     </div>
+  </main>
 
   <!-- Footer -->
   <footer class="auth-footer">
@@ -215,201 +176,176 @@
 </div>
 
 <style>
-  .auth-container {
-    height: 100vh;
-    max-height: 100vh;
-    background-color: #E5E5E5;
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  .auth-page {
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
-    position: relative;
-    padding: 0;
-    overflow: hidden;
+    background-color: #E5E5E5;
   }
 
   /* Top Header */
-  .header {
-    background: #FFFFFF;
-    border-bottom: 1px solid #EAF2FD;
+  .top-header {
+    background: #000000;
+    padding: 1rem 2rem;
+    display: flex;
+    align-items: center;
     position: relative;
-    flex-shrink: 0;
   }
 
-  .header .container {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem 20px;
-    max-width: 1200px;
-    margin: 0 auto;
-  }
-
-  .nav-left {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    cursor: pointer;
-    transition: opacity 0.2s ease;
-  }
-
-  .nav-left:hover {
-    opacity: 0.7;
-  }
-
-  .logo-icon {
-    width: 32px;
-    height: 32px;
-    object-fit: contain;
-  }
-
-  .logo {
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: #000000;
-    margin: 0;
-  }
-
-  .nav-right {
+  .header-content {
     display: flex;
     align-items: center;
     gap: 1rem;
+    width: 100%;
   }
 
-  /* Language Selector */
-  .language-wrapper {
-    position: relative;
-  }
-  
-  .language-btn {
+  .back-button {
+    background: #ECF86E;
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    background: none;
-    border: none;
-    color: #666;
-    font-weight: 500;
-    padding: 0.5rem;
+    font-weight: 600;
     cursor: pointer;
-    border-radius: 8px;
-    transition: all 0.2s ease;
-  }
-  
-  .language-btn:hover {
-    background: #EAF2FD;
     color: #000;
+    transition: background 0.2s;
   }
-  
-  .dropdown-arrow {
-    transition: transform 0.2s ease;
+
+  .back-button:hover {
+    background: #E0F055;
   }
-  
-  .language-dropdown {
-    position: absolute;
-    top: calc(100% + 0.5rem);
-    right: 0;
-    background: #fff;
-    border: 1px solid #EAF2FD;
+
+  .logo-button {
+    background: #ECF86E;
+    border: none;
     border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-    min-width: 150px;
-    z-index: 1000;
-    overflow: hidden;
-  }
-  
-  .dropdown-item {
-    width: 100%;
+    padding: 0.5rem 1rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    border: none;
-    background: none;
-    color: #000;
-    font-size: 0.9rem;
+    font-weight: 700;
     cursor: pointer;
-    transition: background 0.2s ease;
-    text-decoration: none;
+    color: #000;
+    transition: background 0.2s;
   }
-  
-  .dropdown-item:hover,
-  .dropdown-item.active {
-    background: #F8FFCB;
+
+  .logo-button:hover {
+    background: #E0F055;
+  }
+
+  .logo-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .logo-text {
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  /* Main Content Area */
+  .main-content-area {
+    flex: 1;
+    padding: 2rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
 
   .content-wrapper {
-    flex: 1;
     display: grid;
-    grid-template-columns: 1.2fr 0.85fr;
-    gap: 10px;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
     max-width: 1400px;
     width: 100%;
-    margin: 0 auto;
-    padding: 16px 200px 16px 100px;
-    overflow: hidden;
-    min-height: 0;
   }
 
+  /* Marketing Card */
   .marketing-card {
+    background: #FFFFFF;
+    border-radius: 16px;
+    padding: 2.5rem;
     display: flex;
     flex-direction: column;
-    position: relative;
-    background: transparent;
-    border-radius: 0;
-    padding: 60px 20px 0 60px;
-    box-shadow: none;
-    overflow-y: auto;
-    min-height: 0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  }
+
+  .logo-section {
+    margin-bottom: 2rem;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .logo-icon-large {
+    width: 32px;
+    height: 32px;
+  }
+
+  .logo-text-large {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #000;
   }
 
   .marketing-title {
-    font-size: 2.25rem;
+    font-size: 2.5rem;
     font-weight: 700;
     color: #000;
-    margin-bottom: 12px;
+    margin-bottom: 1rem;
     line-height: 1.2;
   }
 
   .marketing-description {
-    font-size: 0.95rem;
+    font-size: 1rem;
     color: #666;
-    line-height: 1.5;
-    margin-bottom: 20px;
+    line-height: 1.6;
+    margin-bottom: 2rem;
   }
 
   .marketing-illustration {
     flex: 1;
-    min-height: 0;
+    min-height: 400px;
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    margin-top: auto;
   }
 
   .illustration-image {
     width: 100%;
-    max-width: 100%;
-    height: auto;
+    height: 100%;
     object-fit: contain;
     border-radius: 12px;
   }
 
+  /* Form Card */
   .form-card {
-    background: white;
+    background: #FFFFFF;
     border-radius: 16px;
-    padding: 24px;
+    padding: 2.5rem;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-    overflow-y: auto;
-    min-height: 0;
-    max-width: 420px;
-    align-self: center;
+    position: relative;
+    align-self: start;
   }
 
   .form-title {
-    font-size: 1.75rem;
+    font-size: 2rem;
     font-weight: 700;
     color: #000;
-    margin-bottom: 20px;
+    margin-bottom: 2rem;
   }
 
   .error-message {
@@ -424,19 +360,21 @@
   .auth-form {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 1.5rem;
   }
 
   .form-group {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0.5rem;
   }
 
   .form-group label {
     font-weight: 600;
     color: #000;
     font-size: 0.9rem;
+    text-decoration: underline;
+    text-underline-offset: 4px;
   }
 
   .form-group input {
@@ -447,6 +385,7 @@
     font-size: 1rem;
     outline: none;
     transition: border-color 0.2s;
+    background: transparent;
   }
 
   .form-group input:focus {
@@ -508,7 +447,7 @@
     color: #000;
     cursor: pointer;
     transition: background 0.2s;
-    margin-top: 8px;
+    margin-top: 0.5rem;
     width: 100%;
   }
 
@@ -522,7 +461,7 @@
   }
 
   .form-footer {
-    margin-top: 16px;
+    margin-top: 1.5rem;
     text-align: center;
     color: #666;
     font-size: 0.9rem;
@@ -539,42 +478,77 @@
     text-decoration: underline;
   }
 
+  /* Decorative element */
+  .decorative-element {
+    position: absolute;
+    right: -40px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg, #ECF86E 0%, #D4E8FD 100%);
+    border-radius: 50% 30% 50% 30%;
+    opacity: 0.6;
+    z-index: -1;
+  }
+
+  /* Footer */
   .auth-footer {
     background: #2A2A2A;
-    padding: 12px 16px;
+    padding: 1.5rem;
     display: flex;
     justify-content: center;
-    gap: 20px;
+    gap: 2rem;
     flex-wrap: wrap;
-    margin-top: 0;
-    flex-shrink: 0;
   }
 
   .auth-footer a {
-    color: #B0B0B0;
+    color: #FFFFFF;
     text-decoration: none;
     font-size: 0.9rem;
+    transition: color 0.2s;
   }
 
   .auth-footer a:hover {
     color: #ECF86E;
   }
 
+  /* Responsive */
   @media (max-width: 1024px) {
     .content-wrapper {
       grid-template-columns: 1fr;
-      gap: 24px;
-      margin-top: 16px;
-      padding: 0 16px;
-    }
-
-    .form-card {
-      max-width: 100%;
-      margin: 0;
     }
 
     .marketing-card {
       display: none;
+    }
+
+    .form-card {
+      max-width: 100%;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .top-header {
+      padding: 1rem;
+    }
+
+    .header-content {
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .main-content-area {
+      padding: 1rem;
+    }
+
+    .auth-footer {
+      gap: 1rem;
+      padding: 1rem;
+    }
+
+    .auth-footer a {
+      font-size: 0.8rem;
     }
   }
 </style>
