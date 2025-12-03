@@ -12,12 +12,19 @@ const app = new Hono();
 
 // CORS configuration to allow frontend access
 app.use("/*", cors({
-  origin: [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://localhost:8000',
-    'http://127.0.0.1:8000'
-  ],
+  origin: (origin) => {
+    // Allow localhost for development
+    if (!origin || 
+        origin.startsWith('http://localhost') || 
+        origin.startsWith('http://127.0.0.1')) {
+      return true;
+    }
+    // Allow all Vercel deployments (production and preview)
+    if (origin.includes('vercel.app')) {
+      return true;
+    }
+    return false;
+  },
   credentials: true,
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
