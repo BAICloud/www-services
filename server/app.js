@@ -23,6 +23,10 @@ app.use("/*", cors({
     if (origin.includes('vercel.app')) {
       return true;
     }
+    // Allow custom deployment domain
+    if (origin.includes('baicloud.miever.net')) {
+      return true;
+    }
     return false;
   },
   credentials: true,
